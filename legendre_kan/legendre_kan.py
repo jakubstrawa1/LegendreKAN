@@ -1,52 +1,73 @@
-from typing import Literal
-import torch, torch.nn as nn
-from normalization import GaussianCDFNorm, EmpiricalCDFNorm
-from layer import LegendreKANLayer
+# kan_model.py
+from __future__ import annotations
+
+import torch
+import torch.nn as nn
+
+from config        import  CDFMethod, Reduction, NormConfig
+from layer         import LegendreKANLayer
 
 class LegendreKAN(nn.Module):
     """
     Legendre Kernel Adaptive Network (KAN)
 
-    Args
-    ----
-    norm : {"gaussian", "empirical"}
-        Inter-layer normalisation strategy.
+    Parameters
+    ----------
+    norm_method : CDFMethod | str
+        "gaussian"  or  "empirical"
+    norm_reduction : Reduction | str
+        "batch"     or  "sample"
     degree : int
-        Degree of the Legendre polynomial basis.
+        Degree of the Legendre polynomial basis in each KAN layer.
     shifted : bool
-        Whether to use shifted Legendre polynomials (domain [0,1] instead of [-1,1]).
+        If True, *shifted* Legendre polynomials (domain [0, 1]).
+        If False, standard Legendre polynomials on [-1, 1].
+    affine : bool
+        Give every inter-layer normaliser learnable scale/shift.
     """
+
     def __init__(
         self,
-        norm: Literal["gaussian", "empirical"] = "gaussian",
+        *,
+        norm_method: CDFMethod | str = CDFMethod.GAUSSIAN,
+        norm_reduction: Reduction | str = Reduction.SAMPLE,
         degree: int = 4,
-        shifted: bool = False
+        shifted: bool = False,
+        affine: bool = False,
     ):
         super().__init__()
         self.shifted = shifted
 
-        def _make_norm():
-            if norm == "gaussian":
-                return GaussianCDFNorm(unbiased=False)
-            elif norm == "empirical":
-                return EmpiricalCDFNorm()
-            else:
-                raise ValueError(f"norm must be 'gaussian' or 'empirical', got {norm!r}")
+        def _make_norm() -> nn.Module:
+            cfg = NormConfig(
+                method    = norm_method,
+                reduction = norm_reduction,
+                unbiased  = False,
+                affine    = affine,
+            )
+            return cfg.build()
 
-        self.norm0 = _make_norm()
-        self.kan1  = LegendreKANLayer(28 * 28, 32, degree, shifted=self.shifted)
-        self.norm1 = _make_norm()
+        self.normalizer = _make_norm()
 
-        self.kan2  = LegendreKANLayer(32, 16, degree, shifted=self.shifted)
-        self.norm2 = _make_norm()
+        self.kan1  = LegendreKANLayer(
+            28 * 28, 32, degree,
+            rescale_to_11 = not shifted,
+            norm = self.normalizer,
+        )
+        self.kan2  = LegendreKANLayer(
+            32, 16, degree,
+            rescale_to_11 = not shifted,
+            norm = self.normalizer,
+        )
 
-        self.kan3  = LegendreKANLayer(16, 10, degree, shifted=self.shifted)
+        self.kan3  = LegendreKANLayer(
+            16, 10, degree,
+            rescale_to_11 = not shifted,
+            norm = self.normalizer,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.norm0(x)
         x = self.kan1(x)
-        x = self.norm1(x)
         x = self.kan2(x)
-        x = self.norm2(x)
         x = self.kan3(x)
         return x
