@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from scaled_legendre import compute_scaled_legendre_polynomials
+from qkal.scaled_legendre import compute_scaled_legendre_polynomials
 
 
 class QKAL_Layer(nn.Module):

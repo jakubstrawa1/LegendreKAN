@@ -9,7 +9,7 @@ Author: Jakub Strawa, Jarek Duda - July 2025
 
 import torch
 import torch.nn as nn
-from layer import QKAL_Layer
+from qkal.layer import QKAL_Layer
 
 
 class QKAL(nn.Module):
